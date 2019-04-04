@@ -51,11 +51,11 @@ end
 % Return paths for current user
 switch username
     
-    case 'annacham'
+    case 'Anna'
         switch whichDir
             
             case 'datadrive'
-                path = 'E:\Data'; % Folder storing the original data for each mouse
+                path = 'D:\Data'; % Folder storing the original data for each mouse
                 %path = 'F:\';
                 return
             case 'experimentdata' % Folder storing the structs of data used in matlab
