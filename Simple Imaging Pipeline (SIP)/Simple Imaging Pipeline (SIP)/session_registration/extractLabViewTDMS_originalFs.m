@@ -105,7 +105,7 @@ end
 
 %-- Create output struct
 output = struct();
-output.metadata = metadata;
+output.metadataFromLV = metadata;
 
 % -- Use 2P frame clock as reference if this is an imaging session
 dontExportFrameOnset = 0;
@@ -118,6 +118,17 @@ if dontExportFrameOnset == 1
 else
     output.frame_onset = frameOnset(frameIdx(1):end); % frame_onset
 end
+ 
+%initialize required variables in daqdata
+output.lickSignal = [];
+output.wheelRotaryEncoderSignal = [];
+output.wheelDiode = [];
+output.runSpeed = [];
+output.waterValve = [];
+output.frameSignal = [];
+output.optoSignal = [];
+output.frameIndex = [];
+output.lfp = [];
 
 %-- Detect the present channels for this recording
 for x = 1:length(allChannelVars)
@@ -125,81 +136,52 @@ for x = 1:length(allChannelVars)
     % Run speed channel
     if strcmp(allChannelVars(x),[varPreFix, 'Instantspeed'])
         runSpeed = eval([varPreFix, 'Instantspeed', '.Data']);
-        output.run_speed = runSpeed(frameIdx(1):end); % run_speed
+        output.runSpeed = runSpeed(frameIdx(1):end); % run_speed
     end
     
     % Wheel counter channel
     if strcmp(allChannelVars(x),[varPreFix, 'Wheel_counter'])
         wheelCounter = eval([varPreFix, 'Wheel_counter', '.Data']);
-        output.wheel_count = wheelCounter(frameIdx(1):end); % wheel_count
+        output.wheelRotaryEncoderSignal = wheelCounter(frameIdx(1):end); % wheel_count
     elseif strcmp(allChannelVars(x),[varPreFix, 'Wheelcounter'])
         wheelCounter = eval([varPreFix, 'Wheelcounter', '.Data']);
-        output.wheel_count = wheelCounter(frameIdx(1):end); % wheel_count
-    end
-
-    % Tone_onset signal
-    if strcmp(allChannelVars(x),[varPreFix, 'Tone_onset'])
-        tone_onset = eval([varPreFix, 'Tone_onset', '.Data']);
-        output.tone_onset = tone_onset(frameIdx(1):end);
-    end
-    
-    % Speaker_signal_raw signal
-    if strcmp(allChannelVars(x),[varPreFix, 'Speaker_signal_raw'])
-        speaker_signal = eval([varPreFix, 'Speaker_signal_raw', '.Data']);
-        output.speaker_signal = speaker_signal(frameIdx(1):end);
-        
-    elseif strcmp(allChannelVars(x),[varPreFix, 'Speaker_signal'])
-        speaker_signal = eval([varPreFix, 'Speaker_signal', '.Data']);
-        output.speaker_signal = speaker_signal(frameIdx(1):end);
-    end
-    
-    % Photodiode signal
-    if strcmp(allChannelVars(x),[varPreFix, 'Photodiode'])
-        photoDiode = eval([varPreFix, 'Photodiode', '.Data']);
-        %if sum(lower(metadata.Experiment_type(1:2)) == 'sp') == 2 % Space projects ..
-            %output.wheel_diode = photoDiode(frameIdx(1):end); 
-            output.photodiode_filtered = photoDiode(frameIdx(1):end);
-%         else % VAA projects..
-%             % Filter photodiode signal
-%             filtered_pdSignal = filterPhotodiodeSignal(photoDiode,1000);
-%             output.photodiode_filtered = filtered_pdSignal(frameIdx(1):end);
-        %end
+        output.wheelRotaryEncoderSignal = wheelCounter(frameIdx(1):end); % wheel_count
     end
     
     % Wheel diode signal
     if strcmp(allChannelVars(x),[varPreFix, 'wheel_diode'])
         wheel_diode_signal = eval([varPreFix, 'wheel_diode', '.Data']);
-        output.wheel_diode = wheel_diode_signal(frameIdx(1):end);
+        output.wheelDiode = wheel_diode_signal(frameIdx(1):end);
     end
     
     % LFP signal
     if strcmp(allChannelVars(x),[varPreFix, 'LFP'])
        LFP_signal_raw = eval([varPreFix, 'LFP', '.Data']);
-       output.LFP_signal_raw = LFP_signal_raw(frameIdx(1):end);
+       %output.LFP_signal_raw = LFP_signal_raw(frameIdx(1):end);
+       output.lfp = LFP_signal_raw(frameIdx(1):end);
+    end
+    
+    if strcmp(allChannelVars(x), [varPreFix, 'Opto'])
+        opto_signal = eval([varPreFix, 'Opto', '.Data']);
+        output.optoSignal = opto_signal(frameIdx(1):end);
     end
     
     % Optostimulation signal
     if strcmp(allChannelVars(x),[varPreFix, 'opto_signal'])
        opto_signal = eval([varPreFix, 'opto_signal', '.Data']);
-       output.opto_signal = opto_signal(frameIdx(1):end);
-    end
-    
-    % Shock signal
-    if strcmp(allChannelVars(x),[varPreFix, 'Shock_on'])
-        shock_signal = eval([varPreFix, 'Shock_on', '.Data']);
-        output.shock_signal = shock_signal(frameIdx(1):end); 
+       output.optoSignal = opto_signal(frameIdx(1):end);
     end
     
     % Water valve signal
     if strcmp(allChannelVars(x),[varPreFix, 'Water_valve'])
         water_valve_signal = eval([varPreFix, 'Water_valve', '.Data']);
-        output.water_valve_signal = water_valve_signal(frameIdx(1):end);
+        output.waterValve = water_valve_signal(frameIdx(1):end);
     end
 
     % Lick signal
     if strcmp(allChannelVars(x),[varPreFix, 'Lick_signal'])
         lick_signal = eval([varPreFix, 'Lick_signal', '.Data']);
-        output.lick_signal = lick_signal(frameIdx(1):end);
+        output.lickSignal = lick_signal(frameIdx(1):end);
     end
 end
 

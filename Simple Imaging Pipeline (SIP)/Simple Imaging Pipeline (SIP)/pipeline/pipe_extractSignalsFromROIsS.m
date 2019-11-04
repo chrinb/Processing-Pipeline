@@ -18,6 +18,7 @@ function sData = pipe_extractSignalsFromROIsS(sData,fileFolder)
 %           the signal being delta F over F.
 %
 % Written by Andreas Lande and Eivind Hennestad
+% Edited by Anna Chambers
 
 % If inputs are not given, initiate the following
 if nargin<1 
@@ -30,26 +31,31 @@ end
 %-- Select session folder
 sessionID = getSessionIDfromString(fileFolder);
 choosenFolder = fileFolder;
-fileFolder = [fileFolder '\calcium_images_aligned'];
+fileFolder = [fileFolder '\two_photon_images_reg'];
+roiFolder = [choosenFolder '\roisignals'];
 filesInFolder = dir(fileFolder);
 plane_num = 1;
 plane_id = {'001'};
 new_plane_naming = 0; % This is used to determine if the .tif files contain "_plane00X" within the naming. This was not the case for older recordings.
 
 %-- Locate the ROI files for all planes
-for x = 1:length(filesInFolder)
-    if ~isempty(findstr(filesInFolder(x).name,'_rois'))
-        roiFile{plane_num} = [filesInFolder(x).folder '\' filesInFolder(x).name];
-        if ~isempty(findstr(roiFile{plane_num},'_plane'))
-            new_plane_naming = 1;
-            id_indx = findstr(roiFile{plane_num},'_plane');
-            plane_name = roiFile{plane_num};
-            plane_id{plane_num} = plane_name(id_indx+6:id_indx+8);
-        end 
-        plane_num = plane_num + 1;
-    end
-end
- 
+% for x = 1:length(filesInFolder)
+%     if ~isempty(findstr(filesInFolder(x).name,'_rois'))
+%         roiFile{plane_num} = [filesInFolder(x).folder '\' filesInFolder(x).name];
+%         if ~isempty(findstr(roiFile{plane_num},'_plane'))
+%             new_plane_naming = 1;
+%             id_indx = findstr(roiFile{plane_num},'_plane');
+%             plane_name = roiFile{plane_num};
+%             plane_id{plane_num} = plane_name(id_indx+6:id_indx+8);
+%         end 
+%         plane_num = plane_num + 1;
+%     end
+% end
+
+cd(roiFolder);
+filesInRoiFolder = dir('*rois.mat');
+roiFile(plane_num).name = (fullfile(filesInRoiFolder.folder,filesInRoiFolder.name));
+
 %-- Load imArray for each stack and extract signal for each ROI in each plane
 signals = [];
 all_signals = [];
@@ -61,7 +67,8 @@ first_round = 1;
 for plane_num = 1:length(plane_id)
     
     % Load ROI file
-    roiFileVar = load(roiFile{plane_num});
+    name = roiFile(plane_num).name;
+    roiFileVar = load(name);
     rois = roiFileVar.roi_arr;
     roidata_sorted_by_plane(plane_num).ROIdata = rois;
     roidata_sorted_by_plane(plane_num).plane_id = plane_id{plane_num};
@@ -125,10 +132,13 @@ end
 
 signals = all_signals;
 neuropil_signals = all_neuropil_signals;
+sData.imdata.roiSignals = struct();
+sData.imdata.roiSignals(1).ch = 'red'; %for OS1
+sData.imdata.roiSignals(2).ch = 'green'; %for OS1
 
 %--- Get imaging metadata
 try % This is only possible if the datafolders are organized correctly
-    sData.imaging_metadata = loadImagingMetadata(sessionID);
+    sData.imdata.meta = loadImagingMetadata(sessionID);
 
     %-- Convert ROI object into a struct and add ROI_metadata to sessionData
     rois = struct();
@@ -143,21 +153,39 @@ try % This is only possible if the datafolders are organized correctly
         end
     end
 
-    sData.ROI_metadata = rois;
+    sData.imdata.roiArray = rois;
 end
-sData.ROI_metadata = rois;
+sData.imdata.roiArray = rois;
+
+%figure out which channel was used for imaging for these rois
+chIdx = strfind(filesInRoiFolder.name,'ch') + 2;
+channel = str2double(filesInRoiFolder.name(chIdx));
+
 %--- Save signals to sessionData struct
-sData.ROIsignals_raw = signals;
+%sData.ROIsignals_raw = signals;
+sData.imdata.roiSignals(channel).roif = signals;
 
 %--- Save the neuropil_fluorescence signal to the struct
-sData.ROIsignals_neuropil = neuropil_signals;
+%sData.ROIsignals_neuropil = neuropil_signals;
+sData.imdata.roiSignals(channel).npilf = neuropil_signals;
 
 %--- Calculate the delta f over f for the whole recording
-sData.ROIsignals_dFoverF_npsubtracted = preprocess_dFoverF_subtractNeuropil(sData.ROIsignals_raw,sData.ROIsignals_neuropil,sData.ROI_metadata);
-sData.ROIsignals_dFoverF = preprocess_deltaFoverF(sData.ROIsignals_raw);
+%sData.ROIsignals_dFoverF_npsubtracted = preprocess_dFoverF_subtractNeuropil(sData.ROIsignals_raw,sData.ROIsignals_neuropil,sData.ROI_metadata);
+
+%sData.ROIsignals_dFoverF = preprocess_deltaFoverF(sData.ROIsignals_raw);
+sData.imdata.roiSignals(channel).dff = preprocess_deltaFoverF(sData.imdata.roiSignals(channel).roif);
+sData.imdata.roiSignals(channel).dffSubtractedNpil = preprocess_dFoverF_subtractNeuropil(sData.imdata.roiSignals(channel).roif,...
+    sData.imdata.roiSignals(channel).npilf,sData.imdata.roiArray);
+
+%deconvolve Ca signals (npil subtracted)
+rawROI = sData.imdata.roiSignals(channel).dffSubtractedNpil;
+for i = 1:size(rawROI,1)
+    [~,deconROI(i,:)] = deconvolveCa(rawROI(i,:),'method','thresholded');
+end
+sData.imdata.roiSignals(channel).deconv = deconROI;
 
 %--- Calculate the z score normalized signal for the whole recording
-sData.ROIsignals_dFoverF_zScored = zScoreNormalize(sData.ROIsignals_dFoverF);
+%sData.ROIsignals_dFoverF_zScored = zScoreNormalize(sData.ROIsignals_dFoverF);
 
 %--- Get ROI metadata ## UNDER DEVELOPMENT
 % This shall include x,y,z location of ROI, as well as ROI type and radius

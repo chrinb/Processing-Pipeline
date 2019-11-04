@@ -36,16 +36,16 @@ sessionFolder = getSessionFolder(sessionID);
 if strncmp(sessionID,'ID',2) % If the folder is a raw recording from the scope
     path = sessionFolder;
 else  % If the folder is a structured recording session
-    imageFolder = dir(fullfile(sessionFolder, 'calcium_images_raw*'));
+    imageFolder = dir(fullfile(sessionFolder, 'raw_metadata*'));
     imageFolder = imageFolder(1).name;
-    blockFolders = dir(fullfile(sessionFolder, imageFolder, '*201*' ));
-    path = fullfile(sessionFolder, imageFolder, blockFolders(1).name);
+%     blockFolders = dir(fullfile(sessionFolder, imageFolder, '*201*' ));
+%     path = fullfile(sessionFolder, imageFolder, blockFolders(1).name);
 end
 
 %-- Extract metadata from init file
 metadata = struct();
-ini_file = dir(fullfile(path, '*.ini'));
-inifilepath = fullfile(path, ini_file(1).name);
+ini_file = dir(fullfile(imageFolder, '*.ini'));
+inifilepath = fullfile(imageFolder, ini_file(1).name);
 inistring = fileread(inifilepath);
 
 % Detect microscope used

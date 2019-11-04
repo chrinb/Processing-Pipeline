@@ -28,9 +28,10 @@ files_found = dir(labviewFolder);
 daqdata = extractLabViewTDMS_originalFs(sessionID);
 
 % Add metadata
-daqdata.metadata.sessionID = sessionID;
-daqdata.metadata.session_num = sessionID(end-2:end);
-daqdata.metadata.mouse_num = sessionID(2:5);
+% daqdata.metadata.sessionID = sessionID;
+% daqdata.metadata.session_num = sessionID(end-2:end);
+% daqdata.metadata.mouse_num = sessionID(2:5);
+
 
 % Estimate running speed
 try
