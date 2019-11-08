@@ -31,7 +31,7 @@ function sOut = editStruct(sIn, fieldNames, titleStr)
     % Add all components
     createComponents(guiFig, sIn, fieldNames)
 
-    % Create a scrollbar if all components does not fit
+    % Create a scrollbar if all components does not fit in figure window
     createScrollBar(guiFig)
 
     uiwait(guiFig)
@@ -42,7 +42,6 @@ function sOut = editStruct(sIn, fieldNames, titleStr)
 end
 
 
-%TODO implement scroller
 function guiFig = createFigure(titleStr)
 % Creates figure window for editing struct
 
@@ -58,9 +57,10 @@ function guiFig = createFigure(titleStr)
     guiFig.Resize = 'off';
     guiFig.Name = titleStr;
     guiFig.NumberTitle = 'off';
-%     guiFig.WindowScrollWheelFcn = @mouseScrollCallback;
+    guiFig.WindowScrollWheelFcn = @mouseScrollCallback;
     guiFig.WindowKeyPressFcn = @keyboardShortcuts;
     guiFig.CloseRequestFcn = {@quit, 'Cancel'};
+    
 
 end
 
@@ -86,24 +86,31 @@ end
 % Needed for scroller:
 % %     guiPanel.Units = 'pixel';
 % %     panelPosition = get(guiPanel, 'Position');
+
 function createComponents(guiFig, S, fieldNames)
 % Create components in figure for editing properties
 
+    % create uipanel and set its units to pixels
     guiPanel = uipanel(guiFig);
     guiPanel.Position = [0.05, 0.07, 0.9, 0.9];
     guiPanel.Units = 'pixel';
 
+    % specify height of each row and separation between rows in pixels
     rowHeight = 30;
     rowSep = 10;
-    totHeight = guiPanel.Position(4);
-%     guiPanel.Units = 'normalized';
-
     
+    % also get panelHeight in pixels
+    panelHeight = guiPanel.Position(4);
+
+    % y refers to the current position for placing elements. Start at 
+    % bottom of panel, using margin specified by row separation.
     y = rowSep;
 
     % Go through each property and make an inputfield for it. Each
     % editfield has a Tag which is the same as the propertyname. 
     % This is how to refer to them in other functions of the gui.
+    % Since elements are placed from bottom up, reverse the looping to start
+    % from the end of the struct.
     for p = numel(fieldNames):-1:1
 
         currentProperty = fieldNames{p};
@@ -144,13 +151,18 @@ function createComponents(guiFig, S, fieldNames)
         
     end
     
-    if y < totHeight
-        difference = totHeight - y;
+    % If there is extra space left in the panel, reduce the panel height so
+    % that it wraps all the elements (removing that extra space).
+    if y < panelHeight
+        difference = panelHeight - y;
         guiPanel.Position(4) = guiPanel.Position(4) - difference;
         guiFig.Position(4) = guiFig.Position(4) - difference;
         screenSize = get(0, 'ScreenSize');
         guiFig.Position(1:2) = screenSize(3:4)/2 - guiFig.Position(3:4)/2;
     end
+    
+    guiPanel.UserData.rowHeight = rowHeight;
+    guiPanel.UserData.rowSep = rowSep;
     
     % Add save and cancel buttons
     
@@ -311,22 +323,27 @@ end
 
 
 function createScrollBar(guiFig)     
-% Creates a scrollbar on a panel if all the fields does not fit on the panel
+% Create a scrollbar on the panel if all the fields do not fit in the panel
 
     guiPanel = findobj(guiFig, 'Type', 'uipanel');
 
-    % Determine position of bottom most field
+    % Determine position of topmost field. The fields were added from
+    % bottom to top, so the last field that was added is the topmost. The
+    % position of this field will be used to test if a scroller is needed.
     fields = findobj(guiPanel, 'Style', 'text');
-    fieldPos1 = get(fields(1), 'Position'); % Last field added is the first field in the list
+    topmostFieldPos = get(fields(1), 'Position');
 
-    if fieldPos1(2) < 0
-        % Calculate range and y-positions of scrollbar
-        fieldPos2 = get(fields(2), 'Position');
-        yPad = fieldPos2(2) - fieldPos1(4) - fieldPos1(2);
-        panelHeight = 1 + yPad + abs(fieldPos1(2));
-        fieldPosTop = get(fields(end), 'Position');
-        topMargin = 1 - fieldPosTop(2) - fieldPosTop(4);
+    panelHeight = guiPanel.Position(4); % Height of panel
+    topMargin = guiPanel.UserData.rowSep;
 
+    % Calculate the cirtual panel height, the height of the panel when all
+    % elements are visible.
+    virtualPanelHeight = sum(topmostFieldPos([2,4])) + topMargin;
+    
+    % Create a scrollbar if the virtual panel height is larger than the
+    % panelheight.
+    if virtualPanelHeight > panelHeight
+                        
         % Add a java scrollbar
         jScrollbar = javaObjectEDT('javax.swing.JScrollBar');
         jScrollbar.setOrientation(jScrollbar.VERTICAL);                          
@@ -334,15 +351,31 @@ function createScrollBar(guiFig)
 
         % Add a callback for value changes
         jScroller = handle(jScroller, 'CallbackProperties');
-        set(jScroller, 'AdjustmentValueChangedCallback', {@scrollValueChange, guiPanel});
 
-        % Set scrollbar range and positions
-        set(jScroller, 'maximum',  panelHeight * 100, 'VisibleAmount', 100);
-        scrollPos = [0.95, yPad, 0.05, 1-topMargin-yPad]; %% need y coordinates...
+        % Set scrollbar range and positions. The range of the scrollbar is
+        % set in percents, so e.g if the virtual height of the panel is
+        % twice the height of the panel, the scrollbar represents 200%
+        
+        visibleRatio = panelHeight/virtualPanelHeight;
+        
+        set(jScroller, 'maximum',  1/visibleRatio*100, 'VisibleAmount', 100);
+        scrollPos = [0.95, topMargin/panelHeight, 0.05, 1 - topMargin*2/panelHeight];
         set(jScrollContainer, 'Parent', guiPanel, 'units', 'normalized', 'Position', scrollPos)
         
         guiPanel.UserData.scrollBar = jScroller;
         guiPanel.UserData.lastScrollValue = get(jScroller, 'value');
+        guiPanel.UserData.virtualPanelHeight = virtualPanelHeight;
+        
+        set(jScroller, 'AdjustmentValueChangedCallback', {@scrollValueChange, guiPanel});
+        
+        % (Mis)Use this callback to move the elements so that the first is on
+        % the top of the panel. This is a fix for starting the positioning
+        % of elements from the bottom, potentially leaving the first 
+        % (topmost) elements outside of the panel.
+        scrollValueChange(struct('value', 100-virtualPanelHeight/panelHeight*100), [], guiPanel)
+        guiPanel.UserData.lastScrollValue = 0;
+        
+
     end
 
 end 
@@ -351,17 +384,20 @@ end
 function scrollValueChange(scroller, ~, guiPanel)        
 % Callback for value change on scroller belonging to panel. Scrolls up or down.
 
-    delta = scroller.value - guiPanel.UserData.lastScrollValue;
+    % Get the fraction which the scrollbar has moved
+    fractionMoved = (scroller.value - guiPanel.UserData.lastScrollValue) / 100;
     guiPanel.UserData.lastScrollValue = scroller.value;
 
-    % Get editboxes and texts of panel
-    %editfields = findobj(obj.guiPanel, 'Style', 'edit');
+    % Get textsfields of panel
     textfields = findobj(guiPanel, 'Style', 'text');
 
-    % Move fields in panel.
+    % Calculate the shift of components in pixels
+    pixelShiftY = fractionMoved * guiPanel.UserData.virtualPanelHeight;
+    
+    % Move all fields up or down in panel.
     for i = 1:length(textfields)
         fieldPos = get(textfields(i), 'Position');
-        fieldPos(2) = fieldPos(2) + (delta)/100;
+        fieldPos(2) = fieldPos(2) + pixelShiftY;
         set(textfields(i), 'Position', fieldPos)
 
         currentTag = get(textfields(i), 'Tag');
@@ -370,7 +406,7 @@ function scrollValueChange(scroller, ~, guiPanel)
 
         for j = 1:numel(inputfields)
             fieldPos = get(inputfields(j), 'Position');
-            fieldPos(2) = fieldPos(2) + (delta)/100;
+            fieldPos(2) = fieldPos(2) + pixelShiftY;
             set(inputfields(j), 'Position', fieldPos)
         end
 

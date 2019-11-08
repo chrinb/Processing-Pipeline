@@ -1,37 +1,45 @@
-function spikes = integrateAndFire(deconvolvedSignal, opt)
+function spikes = integrateAndFire(deconvDff, opt)
 %integrateAndFire Return an array of spikes time series
-%
-%   spikes = integrateAndFire(deconvolvedSignal, rois, opt) (guess-) 
-%   estimates spikes from a deconvolved dff signal by applying an integrate
-%   and fire moving window.
-%   opt is a struct with options.
-%
-%   spikes is an array of size nRois x nSamples/nTimePoints
-%
-%   opt contains the following fields
-%       spikethreshold : arbitrary number used as spikethreshold when
-%       integrating the deconvolved signal.
-%       windowSize : size of moving window.
+%   SPIKES = integrateAndFire(DECONVDFF, OPT) (guess-) estimates spikes 
+%   from a deconvolved dff signal by applying an integrate and fire moving 
+%   window. SPIKES and DECONVDFF is a nRois x nSamples/nTimePoints matrix 
+%   and OPT is a options struct, containing the following fields:
+%       spikethreshold  : arbitrary number used as spikethreshold when
+%                         integrating the deconvolved signal.
+%       windowSize      : size of moving window.
+
+
 
 % % Set default options if missing in input.
 if nargin < 2
-    opt.spikethreshold = ones(size(deconvolvedSignal, 1), 1) * 0.24;  % Just based on trial and error
-    opt.windowSize = 31;
+    opt.spikethreshold = ones(size(deconvDff, 1), 1) * 0.24;  % Just based on trial and error
+    opt.windowSize = 15;
 end
 
-if ~isfield(opt, 'windowSize'); opt.windowSize = 31; end
-
+if ~isfield(opt, 'windowSize'); opt.windowSize = 15; end
+if ~isfield(opt, 'spikethreshold'); opt.spikethreshold = 0.24; end
 
 % % Initialize array for spikes
 
-spikes = zeros(size(deconvolvedSignal));
+spikes = zeros(size(deconvDff));
+nRois = size(deconvDff, 1);
 
-nRois = size(deconvolvedSignal, 1);
+if nRois > 1 && numel(opt.spikethreshold) == 1
+    opt.spikethreshold = repmat(opt.spikethreshold, 1, nRois);
+end
 
 for i = 1:nRois
 
-    roiSignal = squeeze(deconvolvedSignal(i, :));
+    roiSignal = squeeze(deconvDff(i, :));
     
+    if isfield(opt, 'nSpikes')
+        opt.spikethreshold(i) = sum(roiSignal)*1.1 ./ opt.nSpikes(i);
+
+    end
+    
+    maxDec = max(roiSignal);
+    ratio = opt.spikethreshold(i) / maxDec;
+
     if all(isnan(roiSignal))
         continue
     end
@@ -57,7 +65,15 @@ for i = 1:nRois
 
         % Check if sum is over threshold. Count spikes and reset.
         if floor(cumSum/opt.spikethreshold(i)) >= 1
-            spikes(i, s) = floor(cumSum/opt.spikethreshold(i));
+            % Correct for delay if spikethreshold is high compared to the
+            % deconvolved signal...
+            if ratio > 2
+                windowBeg = max([1, s-opt.windowSize]);
+                ind = (windowBeg-1) + find(roiSignal(windowBeg:s)~=0, 1, 'first');
+            else
+                ind = s;
+            end
+            spikes(i, ind) = floor(cumSum/opt.spikethreshold(i));
             cumSum = cumSum - floor(cumSum/opt.spikethreshold(i))*opt.spikethreshold(i);
         end
     end
