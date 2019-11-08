@@ -9,6 +9,10 @@ elseif numel(varargin) == 1
     bins = 1:numel(events);
 end
 
+if sum(events) == 0
+    X = nan; Y = nan; return
+end
+
 X = 1:sum(events);
 Y = 1:sum(events);
 

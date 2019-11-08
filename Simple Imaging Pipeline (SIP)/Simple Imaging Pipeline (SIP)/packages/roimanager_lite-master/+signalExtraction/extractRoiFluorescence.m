@@ -51,5 +51,18 @@ for i = 1:size(roiMask, 3)
         signalArray(:, i) = mean(reshape(imArrayCropped(tmpMask), nPixels, nFrames), 1);
     end
 end
+
+
+% Tested, but not significantly different for 1  roi...
+% % % signalArray2 = zeros(nFrames, size(roiMask, 3) );
+% % % for i = 1:size(roiMask, 3)
+% % % roiPixels = find(roiMask(:,:,i));
+% % % nPixPerFrame = numel(roiMask(:,:,i));
+% % % roiPixels = repmat(roiPixels, 1, nFrames) + (0:nFrames-1)*nPixPerFrame;
+% % % signalArray2(:,i) = mean(imArray(roiPixels));
+% % % end
+
+
+
     
 end

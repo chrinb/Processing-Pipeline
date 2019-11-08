@@ -22,6 +22,9 @@ function splitMask = splitneuropilmask(npMask, roiMask, nSlices)
 %         Neuropil mask as a 3d logical array where the third dimension is
 %         the number of slices.
 
+
+if nSlices == 1; splitMask=npMask; return; end
+
 % Make some constraints on the inputs
 assert(islogical(npMask(1)) & numel(size(npMask))==2, ...
                         'Neuropil mask should be a logical matrix')

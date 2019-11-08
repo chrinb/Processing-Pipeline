@@ -41,3 +41,6 @@
 %}
 
 % Changes 07/06/2018 - Added undo/redo functionality for rois.
+
+% Changes 21/01/2019 - Fixed options for deconvolving signals
+% Added dark mode

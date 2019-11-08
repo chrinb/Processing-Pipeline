@@ -3,19 +3,32 @@ function [roiMask, npMask] = getMasks(roiArray, roiIdx, expansionFactor, imageMa
 %
 %
 
-if nargin < 3; expansionFactor = 4; end
-if nargin < 4; imageMask = true(size(roiArray(1).mask)); end
+% Check if roiArray input is a RoI/struct or an array of masks
+if isa(roiArray, 'RoI') || isa(roiArray, 'struct')
+    [height, width] = size(roiArray(1).mask);
+    roiMaskOrig = roiArray(roiIdx).mask;
+    roiMaskArray = cat(3, roiArray(:).mask);
 
-[height, width] = size(roiArray(1).mask);
-nRois = numel(roiArray);
+elseif isa(roiArray, 'logical') 
+    [height, width, ~] = size(roiArray);
+    roiMaskOrig = roiArray(:, :, roiIdx);
+    roiMaskArray = roiArray;
+    
+else
+    error('roiArray is wrong class, should be RoI array, struct array or a logical array of masks')
+end
+
+% Set default values to 3rd and 4th input.
+if nargin < 3 || isempty(expansionFactor); expansionFactor = 4; end
+if nargin < 4 || isempty(imageMask); imageMask = true(height, width); end
+
 
 % Create a mask with all rois except for the current one
-roiMaskAll = reshape([roiArray.mask], [height, width, nRois]);
-roiMaskAll(:, :, roiIdx) = [];
-roiMaskAll = logical(sum(roiMaskAll, 3));
+roiMaskArray(:, :, roiIdx) = 0;  %roiMaskAll(:, :, roiIdx) = []; <- very inefficient 
+roiMaskAll = logical(sum(roiMaskArray, 3));
+
 
 % Remove surrounding rois from the roi mask
-roiMaskOrig = roiArray(roiIdx).mask;
 roiMask = roiMaskOrig & xor(roiMaskOrig, roiMaskAll); % Remove parts with overlap.
 
 % Create a mask where all rois are excluded. Erode avoid spillover.
