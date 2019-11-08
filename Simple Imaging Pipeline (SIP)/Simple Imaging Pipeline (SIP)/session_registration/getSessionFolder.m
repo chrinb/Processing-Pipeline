@@ -16,11 +16,13 @@ if strncmp(sessionID,'m',1) % If sessionID follows the regular structure
     
     sObj = session(sessionID);
     
-    if isempty(sObj.storageRootPath) % Use connected drive
-        hddPath = getPathToDir('datadrive');
-    else
-        hddPath = sObj.storageRootPath;
-    end
+    hddPath = getPathToDir('datadrive');
+    
+%     if isempty(sObj.storageRootPath) % Use connected drive
+%         hddPath = getPathToDir('datadrive');
+%     else
+%         hddPath = sObj.storageRootPath;
+%     end
     
     % Mouse folder and session folder
     mouseFolder = ['mouse', sessionID(2:5)];

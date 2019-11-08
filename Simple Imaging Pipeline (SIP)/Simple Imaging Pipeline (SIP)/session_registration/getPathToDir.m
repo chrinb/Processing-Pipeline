@@ -66,11 +66,11 @@ switch username
                 return
         end
         
-    case 'Template'
+    case 'Chris'
         switch whichDir
             
             case 'datadrive'
-                path = 'enter path to data drive here';
+                path = 'E:\Data';
                 return
                 
             case 'experimentdata' 
@@ -82,7 +82,7 @@ switch username
                 return
                 
             case 'fiji'
-                path = 'optionale';
+                path = 'optional';
                 return
                 
             case 'roimanager'
