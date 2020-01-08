@@ -23,7 +23,7 @@ function [sData] = markRipples(sData)
 %putative ripples
 
 fs = 2500;
-freqFilter = [150 250];
+freqFilter = [100 250];
 lfpSignal = sData.ephysdata.lfp;
 runSignal = sData.daqdata.runSpeed;
 lfp = lfpSignal;
