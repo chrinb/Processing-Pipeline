@@ -1,4 +1,4 @@
-function [sData] = markRipples(sData)
+function [sData] = markRipples(sData,makeSpectrogramPlot)
 
 %detectRipples is used to automatically detect peaks in the ripple
 %frequency and extract indices of these peaks so that snippets of the LFP
@@ -46,7 +46,7 @@ nyquistFs = fs/2;
 %min_ripple_width = 0.015; % minimum width of envelop at upper threshold for ripple detection in ms
     
 % Thresholds for ripple detection 
-U_threshold = 3.5;  % in standard deviations
+U_threshold = 3;  % in standard deviations
 % L_threshold = 1; % in standard deviations
     
 % Create filter and apply to LFP data
@@ -103,11 +103,13 @@ end
 rippleSnips(isnan(rippleIdx)) = [];
 rippleIdx(isnan(rippleIdx)) = [];
 
-[final_rippleLFP,final_rippleLocs] = inspectRipples(rippleSnips,rippleIdx);
+[final_rippleLFP,final_rippleLocs] = inspectRipples(rippleSnips,rippleIdx,makeSpectrogramPlot);
 sData.ephysdata.absRipIdx = final_rippleLocs;
 sData.ephysdata.rippleSnips = final_rippleLFP;
 frames = sData.daqdata.frame_onset_reference_frame;
 sData.ephysdata.frameRipIdx = frames(sData.ephysdata.absRipIdx);
+sData.ephysdata.freqFilterSWR = freqFilter;
+sData.ephysdata.SWREnvThr = U_threshold;
 % timeBetweenRipples = diff(rippleIdx);
 % %must have at least 100 ms between ripples, if there are 2 close together,
 % %keep the later one
