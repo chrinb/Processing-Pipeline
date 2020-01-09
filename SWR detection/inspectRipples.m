@@ -1,4 +1,4 @@
-function [final_rippleLFP,final_rippleLocs] = inspectRipples(rippleSnips,rippleIdx)
+function [final_rippleLFP,final_rippleLocs] = inspectRipples(rippleSnips,rippleIdx,makeSpectrogramPlot)
 
 %use this code to manually go through each SWR in the LFP and approve or
 %delete the ripple
@@ -17,12 +17,32 @@ for i = 1:nRipples_start
         time = linspace(0,600,1500);
   
     end
-    figure; plot(time,lfpSnip);
     
-    box off
-    set(gca,'TickDir','out')
-    xlim([1 max(time)])
-    
+    if makeSpectrogramPlot
+        figure; subplot(2,1,1),plot(time,lfpSnip);
+
+        box off
+        set(gca,'TickDir','out')
+        xlim([1 max(time)])
+
+        window  = 128;              % Window size for computing the spectrogram (FFT) [# samples]
+        overlap = 127;              % Overlap of the windows for computing the spectrogram [# samples]
+        nFFT    = 50:10:300;          % Vector defining the frequencies for computing the FFT
+        fs = 2500;
+        x = lfpSnip;
+        [~,F,T,P] = spectrogram(x,window,overlap,nFFT,fs);
+
+
+        subplot(2,1,2);surf(T,F,10*log10(abs(P)),'edgecolor','none');
+          colormap(jet)
+          view([0 90])
+    else
+        figure; plot(time,lfpSnip);
+
+        box off
+        set(gca,'TickDir','out')
+        xlim([1 max(time)])
+    end
 %display prompt and wait for response
     prompt = sprintf('Keep ripple? %d of %d',i,nRipples_start);
     x = input(prompt,'s');
