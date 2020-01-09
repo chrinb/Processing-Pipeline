@@ -64,14 +64,9 @@ while i <= nRipples_start
     elseif strcmp(x,'m')
         [manualLocs,~] = ginput;
         %calculate distance to center of plot, which is at x = 751 samples
-        for k = 1:length(manualLocs)
-            temp = find(round(time)==round(manualLocs(k)));
-            manualLocs(k) = temp(1);
-            clear temp
-        end
         manualLocs = manualLocs - 751;
         manualLocs = rippleIdx(i) + manualLocs;
-        extraRipples = [extraRipples; manualLocs];
+        extraRipples = [extraRipples manualLocs'];
         clear lfpSnip
         close
     else
@@ -82,7 +77,7 @@ while i <= nRipples_start
 end
 
 final_rippleLocs = rippleIdx(keepRipples);
-final_rippleLocs = [final_rippleLocs extraRipples'];
+final_rippleLocs = [final_rippleLocs fix(extraRipples)];
 final_rippleLocs = sort(final_rippleLocs);
 for i = 1:length(final_rippleLocs)
     ripWindow = final_rippleLocs(i)-1250:final_rippleLocs(i)+1250;

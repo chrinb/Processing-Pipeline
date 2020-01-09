@@ -25,7 +25,11 @@ function [sData] = markRipples(sData,makeSpectrogramPlot)
 fs = 2500;
 freqFilter = [100 250];
 lfpSignal = sData.ephysdata.lfp;
-runSignal = sData.daqdata.runSpeed;
+try 
+    runSignal = sData.daqdata.run_speed;
+catch
+    runSignal = sData.daqdata.runSpeed;
+end
 lfp = lfpSignal;
 rawLFP = lfpSignal;
 
@@ -103,10 +107,12 @@ end
 rippleSnips(isnan(rippleIdx)) = [];
 rippleIdx(isnan(rippleIdx)) = [];
 
-[final_rippleLFP,final_rippleLocs] = inspectRipples(rippleSnips,rippleIdx,makeSpectrogramPlot);
+[final_rippleLFP,final_rippleLocs] = inspectRipples(rippleSnips,rippleIdx,lfp,makeSpectrogramPlot);
 sData.ephysdata.absRipIdx = final_rippleLocs;
 sData.ephysdata.rippleSnips = final_rippleLFP;
-frames = sData.daqdata.frame_onset_reference_frame;
+try frames = sData.daqdata.frame_onset_reference_frame;
+catch frames = sData.daqdata.frameIndex;
+end
 sData.ephysdata.frameRipIdx = frames(sData.ephysdata.absRipIdx);
 sData.ephysdata.freqFilterSWR = freqFilter;
 sData.ephysdata.SWREnvThr = U_threshold;
