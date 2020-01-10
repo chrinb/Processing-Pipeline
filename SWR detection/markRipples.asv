@@ -4,28 +4,13 @@ function [sData] = markRipples(sData,makeSpectrogramPlot)
 %frequency and extract indices of these peaks so that snippets of the LFP
 %signals containing putative ripples may be plotted for visual verification.
 
-%HOW TO PERFORM MANUAL SCORING
-%in response to the prompt "Keep ripple? X of X", type 'y' to keep the
-%ripple that is at the center of the plot. Type 'b' to go back to a
-%previous ripple and re-inspect, type 'm' to manually click on a ripple
-%waveform in the plot that may have been missed. NB! When you type 'm' and hit
-%enter, crosshairs will appear and you can click on the LFP line plot
-%roughly in the center of the ripple (aligning the crosshairs with the
-%spectrogram helps to estimate the ripple peak). You can click as many
-%times as you want if there are multiple missed ripples in the plot. When
-%you are done clicking, hit enter. The "extra" ripple locations will be
-%saved and you will be prompted again to save or discard the ripple that
-%was detected at the center of the plot. To discard a ripple, simply hit
-%enter.
-
 %%INPUTS: 
 %sData struct, containing the lfp recording from one animal, one session
 %makeSpectrogramPlot, a logical (1/0) indicating whether to include a
 %spectrogram when plotting the ripple traces for manual scoring
 
 %%OUTPUTS:
-%sData, updated with ripple locations, ripple waveform snippets, and
-%parameters of the scoring (freq filter, threshold)
+%sData, updated
 
 fs = 2500;
 freqFilter = [100 250];
