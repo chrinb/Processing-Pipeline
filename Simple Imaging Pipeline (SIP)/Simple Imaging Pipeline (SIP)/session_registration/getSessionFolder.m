@@ -34,7 +34,7 @@ if strncmp(sessionID,'m',1) % If sessionID follows the regular structure
     
 elseif strncmp(sessionID,'ID',2) % If sessionID indicates a raw recording folder
     sessionID = strrep(sessionID,'+','\');
-    sessionPath = ['E:\',sessionID(4:end)];
+    sessionPath = ['D:\',sessionID(4:end)];
 
     
 else  % Something is wrong

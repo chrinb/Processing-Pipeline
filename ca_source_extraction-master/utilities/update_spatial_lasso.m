@@ -8,7 +8,7 @@ function [A,C] = update_spatial_lasso(Y, A, C, IND, sn, q, maxIter, options)
 %       C:    K x T,  temporal components + background
 %     IND:    K x T,  spatial extent for each component
 %      sn:    d x 1,  noise std for each pixel
-%       q:    scalar, control probability for FDR (default: 0.975)
+%       q:    scalar, control probability for FDR (default: 0.75)
 % maxIter:    maximum HALS iteration (default: 40)
 % options:    options structure
 
@@ -45,22 +45,25 @@ end
 nr = K - options.nb;
 IND(:,nr+1:K) = true;
 T = size(C,2);
+sn = double(sn);
 
+YC = spalloc(d,K,sum(IND(:)));
 if memmaped
     %d = size(A,1);
     step_size = 2e4;
-    YC = zeros([d,K]);    
     for t = 1:step_size:d
-        YC(t:min(t+step_size-1,d),:) = double(Y.Yr(t:min(t+step_size-1,d),:))*C';
+        YC(t:min(t+step_size-1,d),:) = (double(Y.Yr(t:min(t+step_size-1,d),:))*C').*IND(t:min(t+step_size-1,d),:);        
     end
-else
-    YC = Y*C';
+else    
+    YC = double(mm_fun(C,Y));
+%     for k = 1:K
+%         YC(IND(:, k),k) = double(Y(IND(:, k),:)*C(k,:)');
+%     end
 end
 
 %% initialization 
-A(~IND) = 0; 
-U = YC; 
-V = C*C'; 
+A = A.*IND; 
+V = double(C*C'); 
 cc = diag(V);   % squares of l2 norm for all components 
 
 %% updating (neuron by neuron)
@@ -75,7 +78,7 @@ while repeat && miter < maxIter
             lam = 0;
         end
         LAM = norminv(q)*sn*lam;
-        ak = max(0, A(tmp_ind, k)+(U(tmp_ind, k) - LAM(tmp_ind) - A(tmp_ind,:)*V(:, k))/cc(k)); 
+        ak = max(0, A(tmp_ind, k)+(full(YC(tmp_ind, k)) - LAM(tmp_ind) - A(tmp_ind,:)*V(:, k))/cc(k)); 
         A(tmp_ind, k) = ak; 
     end
     miter = miter + 1;
@@ -83,6 +86,6 @@ while repeat && miter < maxIter
 end
 
 f = C(nr+1:end,:);
-Yf = YC(:,nr+1:end); %Y*f';
+Yf = full(YC(:,nr+1:end)); %Y*f';
 b = double(max((double(Yf) - A(:,1:nr)*double(C(1:nr,:)*f'))/(f*f'),0));
 A(:,nr+1:end) = b;

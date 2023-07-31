@@ -66,11 +66,11 @@ switch username
                 return
         end
         
-    case 'Chris'
+    case 'chrinb'
         switch whichDir
             
             case 'datadrive'
-                path = 'E:\Data';
+                path = 'D:\Data';
                 return
                 
             case 'experimentdata' 

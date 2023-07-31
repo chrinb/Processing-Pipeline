@@ -177,12 +177,21 @@ sData.imdata.roiSignals(channel).dff = preprocess_deltaFoverF(sData.imdata.roiSi
 sData.imdata.roiSignals(channel).dffSubtractedNpil = preprocess_dFoverF_subtractNeuropil(sData.imdata.roiSignals(channel).roif,...
     sData.imdata.roiSignals(channel).npilf,sData.imdata.roiArray);
 
-%deconvolve Ca signals (npil subtracted)
+% deconvolveCa signals (npil subtracted)
 rawROI = sData.imdata.roiSignals(channel).dffSubtractedNpil;
 for i = 1:size(rawROI,1)
+    if any(isnan(rawROI(i,:)))
+        continue
+    end
     [~,deconROI(i,:)] = deconvolveCa(rawROI(i,:),'method','thresholded');
 end
+
+try
 sData.imdata.roiSignals(channel).deconv = deconROI;
+catch 
+    warning('No values for deconvolved data');
+    deconROI = 1;
+end
 
 %--- Calculate the z score normalized signal for the whole recording
 %sData.ROIsignals_dFoverF_zScored = zScoreNormalize(sData.ROIsignals_dFoverF);

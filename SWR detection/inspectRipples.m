@@ -21,21 +21,21 @@ while i <= nRipples_start
     end
     
     if makeSpectrogramPlot
-        figure; subplot(2,1,1),plot(time,lfpSnip);
-
+        figure, subplot(2,1,1),plot(time,lfpSnip);
+%         drawnow
         box off
         set(gca,'TickDir','out')
         xlim([1 max(time)])
 
         window  = 128;              % Window size for computing the spectrogram (FFT) [# samples]
         overlap = 127;              % Overlap of the windows for computing the spectrogram [# samples]
-        nFFT    = 50:10:300;          % Vector defining the frequencies for computing the FFT
+        nFFT    = 50:5:300;          % Vector defining the frequencies for computing the FFT
         fs = 2500;
         x = lfpSnip;
         [~,F,T,P] = spectrogram(x,window,overlap,nFFT,fs);
 
 
-        subplot(2,1,2);surf(T,F,10*log10(abs(P)),'edgecolor','none');
+        subplot(2,1,2);surf(T,F,(abs(P)),'edgecolor','none');
           colormap(jet)
           view([0 90])
     else
@@ -46,6 +46,7 @@ while i <= nRipples_start
         xlim([1 max(time)])
     end
 %display prompt and wait for response
+
     prompt = sprintf('Keep ripple? %d of %d',i,nRipples_start);
     x = input(prompt,'s');
     
@@ -55,7 +56,7 @@ while i <= nRipples_start
         t = t + 1;
         
         clear lfpSnip
-        close
+        close 
         i = i + 1;
     elseif strcmp(x,'b')
         close
@@ -86,5 +87,9 @@ final_rippleLocs = [final_rippleLocs extraRipples'];
 final_rippleLocs = sort(final_rippleLocs);
 for i = 1:length(final_rippleLocs)
     ripWindow = final_rippleLocs(i)-1250:final_rippleLocs(i)+1250;
-    final_rippleLFP(i).lfp = lfp(ripWindow);
+    % check that ripple window don't begin before lfp recording or ends
+    % after the end of lfp recording. Skip SWRs that do. 
+    if ripWindow(1) > 1 && ripWindow(end) <= length(lfp)
+        final_rippleLFP(i).lfp = lfp(ripWindow);
+    end
 end

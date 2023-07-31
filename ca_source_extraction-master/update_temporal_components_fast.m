@@ -29,29 +29,85 @@ function [C,f,P,S,YrA] = update_temporal_components_fast(Y,A,b,Cin,fin,P,options
 % Written by: 
 % Eftychios A. Pnevmatikakis, Simons Foundation, 2016
 
-memmaped = isobject(Y);
-if memmaped
+defoptions = CNMFSetParms;
+if nargin < 7 || isempty(options); options = defoptions; end
+
+
+if isa(Y,'char')
+    [~,~,ext] = fileparts(Y);
+    ext = ext(2:end);
+    if strcmpi(ext,'tif') || strcmpi(ext,'tiff')
+        tiffInfo = imfinfo(Y);
+        filetype = 'tif';
+        T = length(tiffInfo);
+        sizY = [tiffInfo(1).Height,tiffInfo(1).Width,T];
+    elseif strcmpi(ext,'mat')
+        filetype = 'mem';
+        Y = matfile(Y,'Writable',true);
+        sizY = size(Y);
+        T = sizY(end);
+    elseif strcmpi(ext,'hdf5') || strcmpi(ext,'h5')
+        filetype = 'hdf5';
+        fileinfo = hdf5info(Y);
+        data_name = fileinfo.GroupHierarchy.Datasets.Name;
+        sizY = fileinfo.GroupHierarchy.Datasets.Dims;
+        T = sizY(end);
+    elseif strcmpi(ext,'raw')
+        filetype = 'raw';
+        fid = fopen(Y);
+        bitsize = 2;
+        imsize = d*bitsize;                                                   % Bit size of single frame
+        current_seek = ftell(fid);
+        fseek(fid, 0, 1);
+        file_length = ftell(fid);
+        fseek(fid, current_seek, -1);
+        T = file_length/imsize;
+        if d3 == 1; sizY = [d1,d2,T]; nd = 2; elseif d3 > 1; sizY = [d1,d2,d3,T]; nd = 3; end
+        fclose(fid);
+    end    
+elseif isobject(Y)
+    filetype = 'mem';
     sizY = size(Y,'Y');
-    d = prod(sizY(1:end-1));
     T = sizY(end);
-else
-    [d,T] = size(Y);
+else % array loaded in memory
+    filetype = 'mat';
+    Y = double(Y);
+    sizY = size(Y);
+    T = sizY(end);
 end
-if isempty(P) || nargin < 6
+
+options.d1 = sizY(1);
+options.d2 = sizY(2);
+if length(sizY) > 3
+    options.d3 = sizY(3);
+end
+d1 = options.d1;
+d2 = options.d2;
+d3 = options.d3;
+d = prod([d1,d2,d3]);
+
+if nargin < 6 || isempty(P)
     active_pixels = find(sum(A,2));                                 % pixels where the greedy method found activity
     unsaturated_pixels = find_unsaturatedPixels(Y);                 % pixels that do not exhibit saturation
     options.pixels = intersect(active_pixels,unsaturated_pixels);   % base estimates only on unsaturated, active pixels                
 end
 
-defoptions = CNMFSetParms;
-if nargin < 7 || isempty(options); options = []; end
 if ~isfield(options,'deconv_method') || isempty(options.deconv_method); method = defoptions.deconv_method; else method = options.deconv_method; end  % choose method
-if ~isfield(options,'restimate_g') || isempty(options.restimate_g); restimate_g = defoptions.restimate_g; else restimate_g = options.restimate_g; end % re-estimate time constant (only with constrained foopsi)
-if ~isfield(options,'temporal_iter') || isempty(options.temporal_iter); ITER = defoptions.temporal_iter; else ITER = options.temporal_iter; end           % number of block-coordinate descent iterations
 if ~isfield(options,'bas_nonneg'); options.bas_nonneg = defoptions.bas_nonneg; end
 if ~isfield(options,'fudge_factor'); options.fudge_factor = defoptions.fudge_factor; end
 
-if isfield(P,'unsaturatedPix'); unsaturatedPix = P.unsaturatedPix; else unsaturatedPix = 1:d; end   % saturated pixels
+K = size(A,2);
+if K == 0    
+    C = [];
+    if exist('fin','var'); f = fin; else f = []; end
+    S = [];
+    YrA = [];
+    P.b = [];
+    P.c1 = [];
+    P.neuron_sn = [];
+    P.gn = [];
+    return
+end
 
 ff = find(sum(A)==0);
 if ~isempty(ff)
@@ -64,8 +120,8 @@ if ~isempty(ff)
 end
 
 % estimate temporal (and spatial) background if they are not present
-if isempty(fin) || nargin < 5           % temporal background missing
-    if isempty(b) || nargin < 3
+if nargin < 5 || isempty(fin)           % temporal background missing
+    if nargin < 3 || isempty(b)
         fin = mm_fun(ones(d,1),Y);
         fin = fin/norm(fin);
         b = max(mm_fun(fin,Y),0);
@@ -76,36 +132,18 @@ if isempty(fin) || nargin < 5           % temporal background missing
 end
 
 % construct product A'*Y
-AY = mm_fun(A,Y);
-bY = mm_fun(b,Y);
-% step = 5e3;
-% if memmaped
-%     AY = zeros(size(A,2),T);
-%     bY = zeros(size(b,2),T);
-%     for i = 1:step:d
-%         Y_temp = double(Y.Yr(i:min(i+step-1,d),:));
-%         AY = AY + A(i:min(i+step-1,d),:)'*Y_temp;
-%         bY = bY + b(i:min(i+step-1,d),:)'*Y_temp;
-%     end
-% else
-%     if issparse(A) && isa(Y,'single')  
-%         if full_A
-%             AY = full(A)'*Y;            
-%         else
-%             AY = A'*double(Y);
-%         end
-%     else
-%         AY = A'*Y;
-%     end
-%     bY = b'*Y;
-% end  
-
-if isempty(Cin) || nargin < 4    % estimate temporal components if missing    
-    Cin = max((A'*A)\double(AY - (A'*b)*fin),0);  
-end
 
 K = size(A,2);
 nb = size(b,2);
+
+AY = mm_fun([A,double(b)],Y);
+bY = AY(K+1:end,:);
+AY = AY(1:K,:);
+
+if  nargin < 4 || isempty(Cin)   % estimate temporal components if missing    
+    Cin = max((A'*A)\double(AY - (A'*b)*fin),0);  
+end
+
 A = [A,double(b)];
 S = zeros(size(Cin));
 Cin = [Cin;fin];
@@ -129,11 +167,12 @@ else
     params = [];
 end
 
-p = P.p;
-options.p = P.p;
+p = options.p;
+%options.p = P.p;
 C = double(C);
 
 C = HALS_temporal(AY, A, C, 100, [], options.bas_nonneg, true);
+use_OASIS = true;
 if p > 0
     YrA = bsxfun(@times, 1./sum(A.^2)',AY - AA*C);
     if options.temporal_parallel
@@ -144,8 +183,7 @@ if p > 0
         c1 = cell(K,1);
         gn = cell(K,1);
         neuron_sn = cell(K,1);
-        %disp([K,nb,length(C)])
-        use_OASIS = false;
+        
         parfor ii = 1:K+nb
             Ytemp = C{ii} + YrA{ii};
             if ii <= K
@@ -155,28 +193,20 @@ if p > 0
                 end                 
                 switch method
                     case 'constrained_foopsi'
-                        [cc,b_temp,c1_temp,gn_temp,neuron_sn_temp,spk] = constrained_foopsi(Ytemp,[],[],[],[],options);
-                            %P.gn{ii} = gn;
-                        gd = max(roots([1,-gn_temp']));  % decay time constant for initial concentration
-                        gd_vec = gd.^((0:T-1));
-                        C{ii} = full(cc(:)' + b_temp + c1_temp*gd_vec);
-                        S{ii} = spk(:)';
-                        b{ii} = b_temp;
-                        c1{ii} = c1_temp;
-                        neuron_sn{ii} = neuron_sn_temp;
-                        gn{ii} = gn_temp;
                         if use_OASIS
-                            [cc,spk,kernel] = deconvCa(Ytemp,[],[],true,false,[],5);                        
+                            if p == 1; model_ar = 'ar1'; elseif p == 2; model_ar = 'ar2'; else error('non supported AR order'); end
+                            spkmin = 0.5*GetSn(Ytemp);
+                            [cc, spk, opts_oasis] = deconvolveCa(Ytemp,model_ar,'optimize_b',true,'method','thresholded',...
+                                    'optimize_pars',true,'maxIter',100,'smin',spkmin);    
+                            cb = opts_oasis.b;
+                            C{ii} = full(cc(:)' + cb);
                             S{ii} = spk(:)';
-                            b_temp = median(Ytemp-cc(:)')
-                            C{ii} = cc(:)' + b_temp;
-                            b{ii} = b_temp;
-                            c1{ii} = Ytemp(1)-cc(1);
-                            neuron_sn{ii} = std(Ytemp-cc(:)');
-                            gn{ii} = kernel.pars;                        
+                            b{ii} = cb;
+                            c1{ii} = 0;
+                            neuron_sn{ii} = opts_oasis.sn;
+                            gn{ii} = opts_oasis.pars(:)';                            
                         else
                             [cc,b_temp,c1_temp,gn_temp,neuron_sn_temp,spk] = constrained_foopsi(Ytemp,[],[],[],[],options);
-                            %P.gn{ii} = gn;
                             gd = max(roots([1,-gn_temp']));  % decay time constant for initial concentration
                             gd_vec = gd.^((0:T-1));
                             C{ii} = full(cc(:)' + b_temp + c1_temp*gd_vec);
@@ -216,26 +246,40 @@ if p > 0
             if ii <= K
                 switch method
                      case 'constrained_foopsi'
-%                         if restimate_g
-%                             [cc,cb,c1,gn,sn,spk] = constrained_foopsi(Ytemp,[],[],[],[],options);
-%                             P.gn{ii} = gn;
-%                         else
-%                             [cc,cb,c1,gn,sn,spk] = constrained_foopsi(Ytemp,[],[],P.g,[],options);
-%                         end
-%                         gd = max(roots([1,-gn']));  % decay time constant for initial concentration
-%                         gd_vec = gd.^((0:T-1));
-%                         C(ii,:) = full(cc(:)' + cb + c1*gd_vec);
-%                         S(ii,:) = spk(:)';
-%                         P.b{ii} = cb;
-%                         P.c1{ii} = c1;           
-%                         P.neuron_sn{ii} = sn;
-                        [cc,spk,kernel] = deconvCa(Ytemp,[],[],true,false,[],5);                        
-                        S(ii,:) = spk(:)';
-                        P.b{ii} = median(Ytemp-cc(:)');
-                        C(ii,:) = cc(:)'+P.b{ii};
-                        P.c1{ii} = Ytemp(1)-cc(1);
-                        P.neuron_sn{ii} = std(Ytemp-cc(:)');
-                        P.gn{ii} = kernel.pars;                            
+                        if use_OASIS
+                            if p == 1; model_ar = 'ar1'; elseif p == 2; model_ar = 'ar2'; else error('non supported AR order'); end
+                            spkmin = 0.5*GetSn(Ytemp);
+                            [cc, spk, opts_oasis] = deconvolveCa(Ytemp,model_ar,'optimize_b',true,'method','thresholded',...
+                                    'optimize_pars',true,'maxIter',100,'smin',spkmin);    
+                            cb = opts_oasis.b;
+                            C(ii,:) = full(cc(:)' + cb);
+                            S(ii,:) = spk(:)';
+                            P.b{ii} = cb;
+                            P.c1{ii} = 0;
+                            P.neuron_sn{ii} = opts_oasis.sn;
+                            P.gn{ii} = opts_oasis.pars(:)';
+                        else
+                            try 
+                                 if restimate_g
+                                    [cc,cb,c1,gn,sn,spk] = constrained_foopsi(Ytemp,[],[],[],[],options);
+                                    P.gn{ii} = gn;
+                                else
+                                    [cc,cb,c1,gn,sn,spk] = constrained_foopsi(Ytemp,[],[],P.g,[],options);
+                                 end
+                            catch
+                                options2 = options;
+                                options2.p = 0;
+                                [cc,cb,c1,gn,sn,spk] = constrained_foopsi(Ytemp,[],[],0,[],options2);
+                                 P.gn{ii} = gn;
+                            end
+                            gd = max(roots([1,-gn']));  % decay time constant for initial concentration
+                            gd_vec = gd.^((0:T-1));
+                            C(ii,:) = full(cc(:)' + cb + c1*gd_vec);
+                            S(ii,:) = spk(:)';
+                            P.b{ii} = cb;
+                            P.c1{ii} = c1;           
+                            P.neuron_sn{ii} = sn;
+                        end
                     case 'MCMC'
                         SAMPLES = cont_ca_sampler(Ytemp,params);
                         ctemp = make_mean_sample(SAMPLES,Ytemp);

@@ -25,6 +25,9 @@ sessionData.daqdata = daqdata;
 
 %--Move LFP recording from daqdata section to its own "ephysdata" section
 sessionData.ephysdata.lfp = sessionData.daqdata.lfp;
+sessionData.ephysdata2.lfp = sessionData.daqdata.lfp2;
+sessionData.ephysdata3.lfp = sessionData.daqdata.lfp3;
+% sessionData.ephysdata4.lfp = sessionData.daqdata.lfp4;
 
 %--load mouse info
 currentDir = fileFolder;
@@ -57,6 +60,6 @@ end
 
 sessionData.sessionInfo = sessionInfo;
 
-
+% save('sData')
 
 end

@@ -50,21 +50,32 @@ if ~isfield(options,'tsub') || isempty(options.tsub); tsub = 1; else tsub = opti
 if nargin < 2 || (isempty(A_) && isempty(C))  % at least either spatial or temporal components should be provided
     error('Not enough input arguments')
 else
-    if ~isempty(C); K = size(C,1); elseif islogical(A_); K = size(A_,2); else K = size(A_2,2) - options.nb; end
+    if ~isempty(C); K = size(C,1); else K = size(A_,2) - options.nb; end
+end
+if K == 0
+    A = [];
+    b = full(A_(:,K+1:end));
+    C = [];
+    return
 end
 
 if nargin < 5 || isempty(P); P = preprocess_data(Y,1); end  % etsimate noise values if not present
-if nargin < 4 || isempty(A_); 
+if nargin < 4 || isempty(A_)
     IND = ones(d,size(C,1)); 
 else
-    if islogical(A_)     % check if search locations have been provided, otherwise estimate them
-        IND = A_;
+    if islogical(A_)     % check if search locations have been provided, otherwise estimate them        
+        IND = A_(:,1:K);
         if isempty(C)    
             INDav = double(IND)/diag(sum(double(IND)));          
             px = (sum(IND,2)>0);
-            f = mean(Y(~px,:));
+            [b,f] = fast_nmf(double(Y(~px,:)),[],options.nb,50);
             b = max(Y*f',0)/norm(f)^2;
             C = max(INDav'*Y - (INDav'*b)*f,0);
+        end
+        if strcmpi(options.spatial_method,'regularized')
+            A_ = max((Y - b*f)*C'/(C*C'),0);
+            A_ = A_.*IND;
+            A_ = [A_,b];
         end
     else
         IND = determine_search_location(A_(:,1:K),method,options);
@@ -105,7 +116,7 @@ else
 end
 f_ds = Cf_ds(end-size(f,1)+1:end,:);
 
-if strcmpi(options.spatial_method,'constrained');
+if strcmpi(options.spatial_method,'constrained')
     if spatial_parallel         % solve BPDN problem for each pixel
         Nthr = max(20*maxNumCompThreads,round(d*T/2^24));
         Nthr = min(Nthr,round(d/1e3));
@@ -156,7 +167,9 @@ if strcmpi(options.spatial_method,'constrained');
         end
     end
 elseif strcmpi(options.spatial_method,'regularized')                                                    
-    A = update_spatial_lasso(Y_ds, A_, Cf_ds, IND, options.sn, [], [], options);
+    options.nb = size(f,1);
+    
+    A = update_spatial_lasso(Y_ds, A_, Cf_ds, IND, options.sn, [], [], options);    
     K = size(A,2)-options.nb;
     b = full(A(:,K+1:end));
     A = A(:,1:K);
@@ -164,7 +177,7 @@ elseif strcmpi(options.spatial_method,'regularized')
 end
 
 A(isnan(A))=0;
-A = sparse(A);
+A = sparse(double(A));
 A = threshold_components(A,options);  % post-processing of components
 
 fprintf('Updated spatial components \n');

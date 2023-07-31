@@ -85,6 +85,18 @@ if (strcmpi(method,'noise_constrained') || strcmpi(method,'project')) && ~isfiel
 else
     G = speye(T);
 end
+K = size(A,2);
+if K == 0    
+    C = [];
+    if exist('fin','var'); f = fin; else f = []; end
+    S = [];
+    YrA = [];
+    P.b = [];
+    P.c1 = [];
+    P.neuron_sn = [];
+    P.gn = [];
+    return
+end
 
 ff = find(sum(A)==0);
 if ~isempty(ff)
@@ -100,39 +112,23 @@ end
 if isempty(fin) || nargin < 5   % temporal background missing
     bk_pix = (sum(A,2)==0);     % pixels with no active neurons
     if isempty(b) || nargin < 3
-        fin = mean(Y(bk_pix,:));
-        fin = fin/norm(fin);
-        b = max(Y*fin',0);
+        [b,fin] = fast_nmf(double(Y(bk_pix,:)),[],options.nb,50);
+%         fin = mean(Y(bk_pix,:));
+%         fin = fin/norm(fin);
+         b = max(Y*fin',0);
     else
         fin = max(b(bk_pix,:)'*Y(bk_pix,:),0)/(b(bk_pix,:)'*b(bk_pix,:));
     end
 end
 
 % construct product A'*Y
-step = 5e3;
-if memmaped
-    AY = zeros(size(A,2),T);
-    bY = zeros(size(b,2),T);
-    for i = 1:step:d
-        Y_temp = double(Y.Yr(i:min(i+step-1,d),:));
-        AY = AY + A(i:min(i+step-1,d),:)'*Y_temp;
-        bY = bY + b(i:min(i+step-1,d),:)'*Y_temp;
-    end
-else
-    if issparse(A) && isa(Y,'single')  
-        if full_A
-            AY = full(A)'*Y;            
-        else
-            AY = A'*double(Y);
-        end
-    else
-        AY = A'*Y;
-    end
-    bY = b'*Y;
-end  
+AY = mm_fun([A,double(b)],Y);
+bY = AY(size(A,2)+1:end,:);
+AY = AY(1:size(A,2),:);
+AA = sparse(double(A))'*sparse(double(A));
 
 if isempty(Cin) || nargin < 4    % estimate temporal components if missing    
-    Cin = max((A'*A)\double(AY - (A'*b)*fin),0);  
+    Cin = max(AA\double(AY - (A'*b)*fin),0);  
     ITER = max(ITER,3);
 end
 
@@ -190,8 +186,12 @@ p = P.p;
 options.p = P.p;
 C = double(C);
 if options.temporal_parallel
-    for iter = 1:ITER
-        [O,lo] = update_order(A(:,1:K));
+    [O,lo] = update_order_greedy(A(:,1:K));
+    fr = options.fr;
+    decay_time = options.decay_time;
+    spk_SNR = options.spk_SNR;
+    lam_pr = options.lam_pr;
+    for iter = 1:ITER        
         for jo = 1:length(O)
             %Ytemp = YrA(:,O{jo}(:)) + Cin(O{jo},:)';
             %Ytemp = YrA(O{jo}(:),:) + Cin(O{jo},:);
@@ -224,27 +224,27 @@ if options.temporal_parallel
                 else
                     switch method
                         case 'project'
-                            %cc = plain_foopsi(Ytemp(:,jj),G);
                             cc = plain_foopsi(Ytemp(jj,:),G);
                             Ctemp(jj,:) = full(cc');
                             Stemp(jj,:) = Ctemp(jj,:)*G';
                         case 'constrained_foopsi'
-                            %if restimate_g
-                            %[cc,cb,c1,gn,sn,spk] = constrained_foopsi(Ytemp(:,jj),[],[],[],[],options);
-                            [cc,cb,c1,gn,sn,spk] = constrained_foopsi(Ytemp(jj,:),[],[],[],[],options);
-                            %else
-                            %    [cc,cb,c1,gn,sn,spk] = constrained_foopsi(Ytemp(:,jj)/nA(jj),[],[],P.g,[],options);
-                            %end
-                            gd = max(roots([1,-gn']));  % decay time constant for initial concentration
-                            gd_vec = gd.^((0:T-1));
-                            Ctemp(jj,:) = full(cc(:)' + cb + c1*gd_vec);
+                            %[cc,cb,c1,gn,sn,spk] = constrained_foopsi(Ytemp(jj,:),[],[],[],[],options);
+                            %gd = max(roots([1,-gn']));  % decay time constant for initial concentration
+                            %gd_vec = gd.^((0:T-1));
+                            if p == 1; model_ar = 'ar1'; elseif p == 2; model_ar = 'ar2'; else error('non supported AR order'); end
+                            spkmin = spk_SNR*GetSn(Ytemp(jj,:));
+                            lam = choose_lambda(exp(-1/(fr*decay_time)),GetSn(Ytemp(jj,:)),lam_pr);
+                            [cc, spk, opts_oasis] = deconvolveCa(Ytemp(jj,:),model_ar,'optimize_b',true,'method','thresholded',...
+                                    'optimize_pars',true,'maxIter',10,'smin',spkmin,'window',200,'lambda',lam);    
+                            
+                            cb = opts_oasis.b;
+                            Ctemp(jj,:) = full(cc(:)' + cb);
                             Stemp(jj,:) = spk(:)';
-                            %Ytemp(:,jj) = Ytemp(:,jj) - Ctemp(jj,:)';
                             Ytemp(jj,:) = Ytemp(jj,:) - Ctemp(jj,:);
                             btemp(jj) = cb;
-                            c1temp(jj) = c1;
-                            sntemp(jj) = sn;
-                            gtemp{jj} = gn(:)';
+                            c1temp(jj) = 0;
+                            sntemp(jj) = opts_oasis.sn;
+                            gtemp{jj} = opts_oasis.pars(:)';
                         case 'MCMC'
                             %SAMPLES = cont_ca_sampler(Ytemp(:,jj),params);
                             SAMPLES = cont_ca_sampler(Ytemp(jj,:),params);
@@ -293,7 +293,7 @@ if options.temporal_parallel
     end
 else
     for iter = 1:ITER
-    perm = randperm(K+size(b,2));
+    perm = 1:K+size(b,2); randperm(K+size(b,2));
         for jj = 1:K
             ii = perm(jj);
             Ytemp = C(ii,:) + AY(ii,:) - AA(ii,:)*C;
@@ -317,22 +317,22 @@ else
                             C(ii,:) = full(cc');                            
                             S(ii,:) = C(ii,:)*G';
                         case 'constrained_foopsi'
-                            %YrA(:,ii) = YrA(:,ii) + Cin(ii,:)';
-                            %Ytemp = YrA(:,ii) + Cin(ii,:)';
-                            if restimate_g
-                                [cc,cb,c1,gn,sn,spk] = constrained_foopsi(Ytemp,[],[],[],[],options);
-                                P.gn{ii} = gn;
-                            else
-                                [cc,cb,c1,gn,sn,spk] = constrained_foopsi(Ytemp,[],[],P.g,[],options);
-                            end
-                            gd = max(roots([1,-gn']));  % decay time constant for initial concentration
-                            gd_vec = gd.^((0:T-1));
-                            %YrA(:,ff) = YrA(:,ff) - (cc(:) + cb + c1*gd_vec' - C(ii,:)')*AA(ii,ff);
-                            C(ii,:) = full(cc(:)' + cb + c1*gd_vec);
+                            %[cc,cb,c1,gn,sn,spk] = constrained_foopsi(Ytemp(jj,:),[],[],[],[],options);
+                            if p == 1; model_ar = 'ar1'; elseif p == 2; model_ar = 'exp2'; else error('non supported AR order'); end
+                            spkmin = options.spk_SNR*GetSn(Ytemp);
+                            lam = choose_lambda(exp(-1/(options.fr*options.decay_time)),GetSn(Ytemp),options.lam_pr);
+                            [cc, spk, opts_oasis] = deconvolveCa(Ytemp,model_ar,'optimize_b',true,'method','thresholded',...
+                                    'optimize_pars',true,'maxIter',100,'smin',spkmin,'lambda',lam);    
+                            %gd = max(roots([1,-gn']));  % decay time constant for initial concentration
+                            %gd_vec = gd.^((0:T-1));
+                            cb = opts_oasis.b;
+                            C(ii,:) = full(cc(:)' + cb);
                             S(ii,:) = spk(:)';
                             P.b{ii} = cb;
-                            P.c1{ii} = c1;           
-                            P.neuron_sn{ii} = sn;
+                            P.c1{ii} = 0;
+                            P.neuron_sn{ii} = opts_oasis.sn;
+                            P.gn{ii} = opts_oasis.pars(:)';
+                            
                         case 'MCEM_foopsi'
                             options.p = length(P.g);
                             %Ytemp = YrA(:,ii) + Cin(ii,:)';
